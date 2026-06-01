@@ -19,61 +19,66 @@ jobs:
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
           - platform: linux
             arch: x86_64
             runner: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
-            libraries: libsurrealdb_c.so libsurrealdb.so libsurrealdb_core.so
+            library: libsurrealdb_c.so
           - platform: linux
             arch: aarch64
             runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-            libraries: libsurrealdb_c.so libsurrealdb.so libsurrealdb_core.so
+            library: libsurrealdb_c.so
           - platform: macos
             arch: x86_64
             runner: macos-13
             target: x86_64-apple-darwin
-            libraries: libsurrealdb_c.dylib libsurrealdb.dylib libsurrealdb_core.dylib
+            library: libsurrealdb_c.dylib
           - platform: macos
             arch: aarch64
             runner: macos-14
             target: aarch64-apple-darwin
-            libraries: libsurrealdb_c.dylib libsurrealdb.dylib libsurrealdb_core.dylib
+            library: libsurrealdb_c.dylib
           - platform: windows
             arch: x86_64
             runner: windows-2022
             target: x86_64-pc-windows-msvc
-            libraries: surrealdb_c.dll surrealdb.dll surrealdb_core.dll
+            library: surrealdb_c.dll
           - platform: windows
             arch: aarch64
             runner: windows-11-arm
             target: aarch64-pc-windows-msvc
-            libraries: surrealdb_c.dll surrealdb.dll surrealdb_core.dll
+            library: surrealdb_c.dll
+
+    env:
+      CARGO_INCREMENTAL: "0"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Cache Cargo build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/git/db
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            target/${{ matrix.target }}/release
+          key: cargo-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ matrix.target }}-
+
       - name: Install Rust target
         shell: bash
         run: rustup target add "${{ matrix.target }}"
 
-      - name: Build C API shared library
+      - name: Build SurrealDB C shared library
         shell: bash
         run: cargo build --release --locked --target "${{ matrix.target }}"
-
-      - name: Build SurrealDB shared libraries
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          cargo rustc --release --locked --target "${{ matrix.target }}" \
-            --package surrealdb-core --lib -- --crate-type cdylib
-
-          cargo rustc --release --locked --target "${{ matrix.target }}" \
-            --package surrealdb --lib -- --crate-type cdylib
 
       - name: Stage artifact
         shell: bash
@@ -88,18 +93,16 @@ jobs:
           mkdir -p "${lib_dir}" "${include_dir}"
           cp include/surrealdb.h "${include_dir}/"
 
-          for library in ${{ matrix.libraries }}; do
-            library_path="$(find "${release_dir}" "${release_dir}/deps" -maxdepth 1 -type f -name "${library}" -print -quit)"
-            if [[ -z "${library_path}" ]]; then
-              echo "Missing ${library} in ${release_dir}" >&2
-              exit 1
-            fi
-            cp "${library_path}" "${lib_dir}/"
-          done
+          library_path="$(find "${release_dir}" "${release_dir}/deps" -maxdepth 1 -type f -name "${{ matrix.library }}" -print -quit)"
+          if [[ -z "${library_path}" ]]; then
+            echo "Missing ${{ matrix.library }} in ${release_dir}" >&2
+            exit 1
+          fi
+          cp "${library_path}" "${lib_dir}/"
 
           if [[ "${{ matrix.platform }}" == "windows" ]]; then
             find "${release_dir}" -maxdepth 1 \
-              \( -name "surrealdb*.dll.lib" -o -name "surrealdb*.lib" -o -name "surrealdb*.pdb" \) \
+              \( -name "surrealdb_c.dll.lib" -o -name "surrealdb_c.lib" -o -name "surrealdb_c.pdb" \) \
               -exec cp {} "${lib_dir}/" \;
           fi
 
