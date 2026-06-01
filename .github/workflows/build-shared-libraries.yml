@@ -1,0 +1,113 @@
+name: Build shared libraries
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.platform }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            arch: x86_64
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            libraries: libsurrealdb_c.so libsurrealdb.so libsurrealdb_core.so
+          - platform: linux
+            arch: aarch64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            libraries: libsurrealdb_c.so libsurrealdb.so libsurrealdb_core.so
+          - platform: macos
+            arch: x86_64
+            runner: macos-13
+            target: x86_64-apple-darwin
+            libraries: libsurrealdb_c.dylib libsurrealdb.dylib libsurrealdb_core.dylib
+          - platform: macos
+            arch: aarch64
+            runner: macos-14
+            target: aarch64-apple-darwin
+            libraries: libsurrealdb_c.dylib libsurrealdb.dylib libsurrealdb_core.dylib
+          - platform: windows
+            arch: x86_64
+            runner: windows-2022
+            target: x86_64-pc-windows-msvc
+            libraries: surrealdb_c.dll surrealdb.dll surrealdb_core.dll
+          - platform: windows
+            arch: aarch64
+            runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            libraries: surrealdb_c.dll surrealdb.dll surrealdb_core.dll
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust target
+        shell: bash
+        run: rustup target add "${{ matrix.target }}"
+
+      - name: Build C API shared library
+        shell: bash
+        run: cargo build --release --locked --target "${{ matrix.target }}"
+
+      - name: Build SurrealDB shared libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cargo rustc --release --locked --target "${{ matrix.target }}" \
+            --package surrealdb-core --lib -- --crate-type cdylib
+
+          cargo rustc --release --locked --target "${{ matrix.target }}" \
+            --package surrealdb --lib -- --crate-type cdylib
+
+      - name: Stage artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          output_dir="dist/surrealdb-libs-${{ matrix.platform }}-${{ matrix.arch }}"
+          lib_dir="${output_dir}/lib"
+          include_dir="${output_dir}/include"
+          release_dir="target/${{ matrix.target }}/release"
+
+          mkdir -p "${lib_dir}" "${include_dir}"
+          cp include/surrealdb.h "${include_dir}/"
+
+          for library in ${{ matrix.libraries }}; do
+            library_path="$(find "${release_dir}" "${release_dir}/deps" -maxdepth 1 -type f -name "${library}" -print -quit)"
+            if [[ -z "${library_path}" ]]; then
+              echo "Missing ${library} in ${release_dir}" >&2
+              exit 1
+            fi
+            cp "${library_path}" "${lib_dir}/"
+          done
+
+          if [[ "${{ matrix.platform }}" == "windows" ]]; then
+            find "${release_dir}" -maxdepth 1 \
+              \( -name "surrealdb*.dll.lib" -o -name "surrealdb*.lib" -o -name "surrealdb*.pdb" \) \
+              -exec cp {} "${lib_dir}/" \;
+          fi
+
+          find "${output_dir}" -type f -print | sort
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: surrealdb-libs-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/surrealdb-libs-${{ matrix.platform }}-${{ matrix.arch }}
+          if-no-files-found: error
