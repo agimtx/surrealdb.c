@@ -19,7 +19,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 1
       matrix:
         include:
           - platform: linux
@@ -27,31 +27,6 @@ jobs:
             runner: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             library: libsurrealdb_c.so
-          - platform: linux
-            arch: aarch64
-            runner: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
-            library: libsurrealdb_c.so
-          - platform: macos
-            arch: x86_64
-            runner: macos-13
-            target: x86_64-apple-darwin
-            library: libsurrealdb_c.dylib
-          - platform: macos
-            arch: aarch64
-            runner: macos-14
-            target: aarch64-apple-darwin
-            library: libsurrealdb_c.dylib
-          - platform: windows
-            arch: x86_64
-            runner: windows-2022
-            target: x86_64-pc-windows-msvc
-            library: surrealdb_c.dll
-          - platform: windows
-            arch: aarch64
-            runner: windows-11-arm
-            target: aarch64-pc-windows-msvc
-            library: surrealdb_c.dll
 
     env:
       CARGO_INCREMENTAL: "0"
