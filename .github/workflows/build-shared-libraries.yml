@@ -31,6 +31,11 @@ jobs:
             runner: macos-14
             target: aarch64-apple-darwin
             library: libsurrealdb.dylib
+          - platform: windows
+            arch: x86_64
+            runner: windows-2022
+            target: x86_64-pc-windows-msvc
+            library: surrealdb.dll
 
     env:
       CARGO_INCREMENTAL: "0"
