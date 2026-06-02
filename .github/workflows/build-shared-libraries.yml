@@ -57,7 +57,12 @@ jobs:
 
       - name: Build SurrealDB C shared library
         shell: bash
-        run: cargo build --release --locked --target "${{ matrix.target }}"
+        run: |
+          CARGO_PROFILE_RELEASE_OPT_LEVEL=z \
+          CARGO_PROFILE_RELEASE_LTO=fat \
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
+          CARGO_PROFILE_RELEASE_STRIP=symbols \
+            cargo build --release --locked --target "${{ matrix.target }}"
 
       - name: Stage artifact
         shell: bash
