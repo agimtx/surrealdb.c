@@ -25,12 +25,12 @@ jobs:
             arch: x86_64
             runner: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
-            library: libsurrealdb_c.so
+            library: libsurrealdb.so
           - platform: macos
             arch: aarch64
             runner: macos-14
             target: aarch64-apple-darwin
-            library: libsurrealdb_c.dylib
+            library: libsurrealdb.dylib
 
     env:
       CARGO_INCREMENTAL: "0"
@@ -72,17 +72,23 @@ jobs:
           mkdir -p "${lib_dir}" "${include_dir}"
           cp include/surrealdb.h "${include_dir}/"
 
-          library_path="$(find "${release_dir}" "${release_dir}/deps" -maxdepth 1 -type f -name "${{ matrix.library }}" -print -quit)"
+          library_name="${{ matrix.library }}"
+          library_stem="${library_name%.*}"
+          library_ext="${library_name##*.}"
+          library_path="$(find "${release_dir}" "${release_dir}/deps" -maxdepth 1 -type f \( -name "${library_name}" -o -name "${library_stem}_?.${library_ext}" \) -print -quit)"
           if [[ -z "${library_path}" ]]; then
-            echo "Missing ${{ matrix.library }} in ${release_dir}" >&2
+            echo "Missing ${library_name} in ${release_dir}" >&2
             exit 1
           fi
-          cp "${library_path}" "${lib_dir}/"
+          cp "${library_path}" "${lib_dir}/${library_name}"
 
           if [[ "${{ matrix.platform }}" == "windows" ]]; then
-            find "${release_dir}" -maxdepth 1 \
-              \( -name "surrealdb_c.dll.lib" -o -name "surrealdb_c.lib" -o -name "surrealdb_c.pdb" \) \
-              -exec cp {} "${lib_dir}/" \;
+            while IFS= read -r support_path; do
+              support_name="$(basename "${support_path}")"
+              cp "${support_path}" "${lib_dir}/${support_name/_?/}"
+            done < <(find "${release_dir}" -maxdepth 1 \
+              \( -name "surrealdb_?.dll.lib" -o -name "surrealdb_?.lib" -o -name "surrealdb_?.pdb" \) \
+              -print)
           fi
 
           find "${output_dir}" -type f -print | sort
